@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Galáxia dos teus olhos</title>
+<style>
+  :root{
+    --bg-top:#040613;
+    --bg-mid:#0a1128;
+    --bg-bottom:#120a22;
+    --star-warm:#fff6e0;
+    --star-cool:#cfe0ff;
+    --moon:#f4ecd8;
+    --text:#f5f0e6;
+    --text-dim:rgba(245,240,230,0.55);
+  }
+
+  *{ box-sizing:border-box; }
+
+  html,body{
+    margin:0;
+    padding:0;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#040613;
+    -webkit-tap-highlight-color:transparent;
+    touch-action:none;
+  }
+
+  body{
+    position:fixed;
+    inset:0;
+  }
+
+  /* Deep sky gradient sits behind the canvas so the canvas itself can stay
+     mostly transparent for the star field / particle system */
+  #sky{
+    position:absolute;
+    inset:0;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(60,50,110,0.35), transparent 55%),
+      radial-gradient(ellipse at 75% 75%, rgba(30,20,70,0.4), transparent 60%),
+      linear-gradient(180deg, var(--bg-top) 0%, var(--bg-mid) 55%, var(--bg-bottom) 100%);
+  }
+
+  canvas{
+    position:absolute;
+    inset:0;
+    display:block;
+  }
+
+  #stage{
+    position:absolute;
+    inset:0;
+  }
+
+  /* Central quote */
+  #quoteWrap{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    width:min(88vw, 720px);
+    text-align:center;
+    pointer-events:none;
+    z-index:5;
+  }
+
+  #quote{
+    font-family: Georgia, "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+    font-weight:400;
+    font-style:italic;
+    color:var(--text);
+    font-size:clamp(1.05rem, 2.6vw + 0.6rem, 2.1rem);
+    line-height:1.55;
+    letter-spacing:0.01em;
+    text-shadow:
+      0 0 18px rgba(180,190,255,0.35),
+      0 0 45px rgba(120,130,220,0.18);
+    opacity:0;
+    filter:blur(6px);
+    transform:translateY(10px) scale(0.99);
+    transition:opacity 2.4s ease, filter 2.4s ease, transform 2.4s ease;
+  }
+
+  #quote.show{
+    opacity:1;
+    filter:blur(0);
+    transform:translateY(0) scale(1);
+  }
+
+  #heart{
+    display:inline-block;
+    color:#e7b8c9;
+  }
+
+  /* Small, almost-whispered hint */
+  #hint{
+    position:absolute;
+    left:50%;
+    bottom:8%;
+    transform:translateX(-50%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size:0.8rem;
+    letter-spacing:0.06em;
+    color:var(--text-dim);
+    opacity:0;
+    transition:opacity 1.8s ease;
+    pointer-events:none;
+    z-index:5;
+    text-align:center;
+    width:90%;
+  }
+
+  #hint.show{ opacity:1; }
+  #hint.hide{ opacity:0; transition:opacity 1.2s ease; }
+
+  /* Ambient sound toggle — tiny, unobtrusive, bottom corner */
+  #soundBtn{
+    position:absolute;
+    right:max(16px, env(safe-area-inset-right));
+    bottom:max(16px, env(safe-area-inset-bottom));
+    width:38px;
+    height:38px;
+    border-radius:50%;
+    border:1px solid rgba(255,255,255,0.18);
+    background:rgba(255,255,255,0.04);
+    color:var(--text-dim);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    z-index:6;
+    opacity:0.55;
+    transition:opacity 0.4s ease, background 0.4s ease, transform 0.2s ease;
+    backdrop-filter: blur(2px);
+  }
+  #soundBtn:hover{ opacity:0.9; background:rgba(255,255,255,0.08); }
+  #soundBtn:active{ transform:scale(0.92); }
+  #soundBtn svg{ width:16px; height:16px; display:block; }
+
+  @media (prefers-reduced-motion: reduce){
+    #quote{ transition:opacity 1.2s ease; }
+  }
+</style>
+</head>
+<body>
+
+  <div id="sky"></div>
+  <div id="stage">
+    <canvas id="skyCanvas"></canvas>
+  </div>
+
+  <div id="quoteWrap">
+    <p id="quote">“A beleza da noite estrelada de Van Gogh não chega aos pés da beleza da galáxia dos teus olhos. <span id="heart">&lt;3</span>”</p>
+  </div>
+
+  <div id="hint">toque nas estrelas</div>
+
+  <button id="soundBtn" aria-label="Ativar som ambiente" title="Som ambiente">
+    <svg id="soundIconOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="4,9 8,9 12,5 12,19 8,15 4,15"></polygon>
+      <line x1="16" y1="9" x2="21" y2="15"></line>
+      <line x1="21" y1="9" x2="16" y2="15"></line>
+    </svg>
+    <svg id="soundIconOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+      <polygon points="4,9 8,9 12,5 12,19 8,15 4,15"></polygon>
+      <path d="M16 8a5 5 0 0 1 0 8"></path>
+      <path d="M18.5 5.5a9 9 0 0 1 0 13"></path>
+    </svg>
+  </button>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ======================================================================
+     SETUP & PERFORMANCE PROFILE
+     Detect a rough capability level so low-power phones get fewer stars
+     and fewer particles, while desktops get the fully layered sky.
+     ====================================================================== */
+  var canvas = document.getElementById('skyCanvas');
+  var ctx = canvas.getContext('2d', { alpha: true });
+  var DPR = Math.min(window.devicePixelRatio || 1, 2); // cap DPR to protect perf on hi-dpi phones
+
+  var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var lowPowerHint = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+                     (navigator.deviceMemory && navigator.deviceMemory <= 4);
+  var isSmallScreen = Math.min(window.innerWidth, window.innerHeight) < 480;
+
+  // Performance tier drives density of stars / particles / shooting stars.
+  var perf = 'high';
+  if (reducedMotion) perf = 'low';
+  else if (lowPowerHint || isSmallScreen) perf = 'medium';
+
+  var CONFIG = {
+    high:   { starCount: 260, maxParticles: 220, shootingStarChance: 0.010, parallax: 1 },
+    medium: { starCount: 150, maxParticles: 120, shootingStarChance: 0.007, parallax: 0.7 },
+    low:    { starCount: 90,  maxParticles: 50,  shootingStarChance: 0.003, parallax: 0.3 }
+  }[perf];
+
+  var W = 0, H = 0; // CSS pixel dimensions
+
+  function resize(){
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.floor(W * DPR);
+    canvas.height = Math.floor(H * DPR);
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    layoutStars();
+  }
+
+  /* ======================================================================
+     STAR FIELD
+     Each star has a "home" position (baseX/baseY) it always springs back
+     to, plus a live x/y and velocity used by the simple physics system.
+     "depth" (0.2 - 1) drives parallax strength, twinkle speed and size.
+     ====================================================================== */
+  var stars = [];
+  var bigStars = []; // subset of stars flagged as tappable "special" stars
+
+  function rand(min, max){ return min + Math.random() * (max - min); }
+
+  function layoutStars(){
+    stars = [];
+    bigStars = [];
+    var count = CONFIG.starCount;
+    for (var i = 0; i < count; i++){
+      var depth = rand(0.15, 1); // 0 = far/background, 1 = close/foreground
+      var isBig = Math.random() < 0.045; // a small handful of "special" stars
+      var radius = isBig ? rand(2.6, 3.6) : rand(0.4, 1.7) * (0.5 + depth * 0.7);
+      var hue = Math.random() < 0.65 ? 'warm' : 'cool';
+      var bx = rand(0, W);
+      var by = rand(0, H);
+      var star = {
+        baseX: bx, baseY: by,
+        x: bx, y: by,
+        vx: 0, vy: 0,
+        depth: depth,
+        radius: radius,
+        baseRadius: radius,
+        hue: hue,
+        twinkleSpeed: rand(0.6, 2.2),
+        twinklePhase: rand(0, Math.PI * 2),
+        twinkleAmount: rand(0.25, 0.6),
+        isBig: isBig,
+        glow: 0,          // 0..1 extra glow used by the tap "event"
+        pulseUntil: 0,
+        driftAngle: rand(0, Math.PI * 2),
+        driftSpeed: rand(0.02, 0.06) * (0.4 + depth)
+      };
+      stars.push(star);
+      if (isBig) bigStars.push(star);
+    }
+  }
+
+  /* Shooting stars: short-lived objects with a position, velocity, length
+     and fading opacity. Spawned probabilistically each frame. */
+  var shootingStars = [];
+
+  function maybeSpawnShootingStar(){
+    if (shootingStars.length > 2) return;
+    if (Math.random() > CONFIG.shootingStarChance) return;
+    var fromLeft = Math.random() < 0.5;
+    var startX = fromLeft ? rand(-50, W * 0.4) : rand(W * 0.6, W + 50);
+    var startY = rand(0, H * 0.5);
+    var angle = fromLeft ? rand(0.25, 0.55) : Math.PI - rand(0.25, 0.55);
+    var speed = rand(6, 13);
+    shootingStars.push({
+      x: startX, y: startY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      len: rand(60, 140),
+      life: 1,
+      decay: rand(0.006, 0.012)
+    });
+  }
+
+  /* ======================================================================
+     PARTICLE SYSTEM (Canvas-based — not DOM — for performance)
+     Used for: touch ripples, tap sparkles, and the "special star" burst.
+     ====================================================================== */
+  var particles = [];
+
+  function spawnParticles(x, y, count, opts){
+    opts = opts || {};
+    var color = opts.color || '255,246,224';
+    for (var i = 0; i < count; i++){
+      if (particles.length >= CONFIG.maxParticles) break;
+      var angle = rand(0, Math.PI * 2);
+      var speed = rand(opts.minSpeed || 0.4, opts.maxSpeed || 2.4);
+      particles.push({
+        x: x, y: y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1,
+        decay: rand(0.012, 0.03),
+        radius: rand(opts.minR || 0.6, opts.maxR || 2.2),
+        color: color
+      });
+    }
+  }
+
+  /* ======================================================================
+     POINTER INTERACTION (unified mouse / touch / pen via Pointer Events)
+     ====================================================================== */
+  var pointer = { x: -9999, y: -9999, active: false, lastX: -9999, lastY: -9999 };
+  var pulses = []; // outward "energy wave" rings triggered by tap/click
+
+  // Each star was randomly assigned to attract or repel on creation so the
+  // reaction near the cursor feels organic rather than uniform.
+  function assignAffinities(){
+    for (var i = 0; i < stars.length; i++){
+      stars[i].affinity = Math.random() < 0.65 ? -1 : 1; // -1 repel, +1 attract
+    }
+  }
+
+  var firstInteractionDone = false;
+  var hintEl = document.getElementById('hint');
+
+  function onFirstInteraction(){
+    if (firstInteractionDone) return;
+    firstInteractionDone = true;
+    hintEl.classList.remove('show');
+    hintEl.classList.add('hide');
+  }
+
+  function handlePointerMove(px, py){
+    pointer.lastX = pointer.x;
+    pointer.lastY = pointer.y;
+    pointer.x = px;
+    pointer.y = py;
+    pointer.active = true;
+  }
+
+  function handlePointerLeave(){
+    pointer.active = false;
+    pointer.x = -9999;
+    pointer.y = -9999;
+  }
+
+  function distSq(ax, ay, bx, by){
+    var dx = ax - bx, dy = ay - by;
+    return dx * dx + dy * dy;
+  }
+
+  function triggerTap(x, y){
+    onFirstInteraction();
+
+    // Did the tap land on (or very near) a "big" star? -> special event
+    var hitBig = null;
+    var hitRadiusSq = 26 * 26;
+    for (var i = 0; i < bigStars.length; i++){
+      var s = bigStars[i];
+      if (distSq(x, y, s.x, s.y) < hitRadiusSq){
+        hitBig = s;
+        break;
+      }
+    }
+
+    if (hitBig){
+      triggerBigStarEvent(hitBig);
+    } else {
+      // Ordinary tap: energy ripple + a light scatter of sparkle particles
+      pulses.push({ x: x, y: y, radius: 4, maxRadius: rand(140, 220), life: 1 });
+      spawnParticles(x, y, 10, { color: '210,220,255', minSpeed: 0.6, maxSpeed: 2.8, minR: 0.5, maxR: 1.8 });
+    }
+  }
+
+  function triggerBigStarEvent(star){
+    star.glow = 1;
+    star.pulseUntil = performance.now() + 1400;
+    spawnParticles(star.x, star.y, 22, { color: '255,236,190', minSpeed: 0.5, maxSpeed: 3.2, minR: 0.6, maxR: 2.6 });
+    pulses.push({ x: star.x, y: star.y, radius: 2, maxRadius: 90, life: 1, gold: true });
+
+    // Nearby stars get a gentle outward nudge so the moment feels shared
+    // with the surrounding sky, not isolated to one point.
+    for (var i = 0; i < stars.length; i++){
+      var s = stars[i];
+      if (s === star) continue;
+      var d2 = distSq(star.x, star.y, s.x, s.y);
+      if (d2 < 140 * 140){
+        var d = Math.sqrt(d2) || 1;
+        var force = (1 - d / 140) * 1.6;
+        s.vx += ((s.x - star.x) / d) * force;
+        s.vy += ((s.y - star.y) / d) * force;
+      }
+    }
+  }
+
+  // Pointer Events unify mouse, touch and pen so the same logic handles all.
+  window.addEventListener('pointermove', function(e){
+    handlePointerMove(e.clientX, e.clientY);
+    if (e.pointerType !== 'touch') onFirstInteraction();
+  }, { passive: true });
+
+  window.addEventListener('pointerdown', function(e){
+    handlePointerMove(e.clientX, e.clientY);
+    triggerTap(e.clientX, e.clientY);
+  }, { passive: true });
+
+  window.addEventListener('pointerup', function(e){
+    // For touch, release the "attraction" shortly after lifting the finger
+    // so stars drift back home rather than sticking to the last touch point.
+    if (e.pointerType === 'touch'){
+      setTimeout(function(){
+        if (!pointer.active) return;
+        handlePointerLeave();
+      }, 900);
+    }
+  }, { passive: true });
+
+  window.addEventListener('pointerleave', function(){ handlePointerLeave(); }, { passive: true });
+  window.addEventListener('pointercancel', function(){ handlePointerLeave(); }, { passive: true });
+
+  // Support multiple simultaneous touches producing independent ripples.
+  window.addEventListener('touchstart', function(e){
+    if (!e.changedTouches) return;
+    for (var i = 0; i < e.changedTouches.length; i++){
+      var t = e.changedTouches[i];
+      if (i > 0) triggerTap(t.clientX, t.clientY); // first touch already handled by pointerdown
+    }
+  }, { passive: true });
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', function(){ setTimeout(resize, 200); });
+
+  /* ======================================================================
+     PHYSICS STEP
+     Each star springs toward its home position; the cursor / touch point
+     applies a proximity-weighted attract/repel force on top of that.
+     ====================================================================== */
+  var SPRING = 0.02;      // pull back toward home
+  var DAMPING = 0.90;      // velocity decay each frame
+  var INFLUENCE_RADIUS = 150;
+
+  function stepStars(dt){
+    var t = performance.now() * 0.001;
+
+    for (var i = 0; i < stars.length; i++){
+      var s = stars[i];
+
+      // Gentle ambient drift so the sky never looks perfectly static.
+      s.driftAngle += s.driftSpeed * 0.01;
+      var driftX = Math.cos(s.driftAngle) * (0.15 + s.depth * 0.25);
+      var driftY = Math.sin(s.driftAngle * 0.8) * (0.15 + s.depth * 0.25);
+
+      // Cursor / touch influence — organic, distance-weighted, never a hard "follow".
+      if (pointer.active){
+        var dx = s.x - pointer.x;
+        var dy = s.y - pointer.y;
+        var d2 = dx * dx + dy * dy;
+        if (d2 < INFLUENCE_RADIUS * INFLUENCE_RADIUS){
+          var d = Math.sqrt(d2) || 1;
+          var proximity = 1 - d / INFLUENCE_RADIUS; // 1 = very close, 0 = at edge
+          var strength = proximity * proximity * 0.55 * (0.4 + s.depth * 0.8);
+          var dirX = dx / d, dirY = dy / d;
+          s.vx += dirX * strength * s.affinity;
+          s.vy += dirY * strength * s.affinity;
+        }
+      }
+
+      // Outward pulses (from taps) push nearby stars briefly.
+      for (var p = 0; p < pulses.length; p++){
+        var pu = pulses[p];
+        var pdx = s.x - pu.x, pdy = s.y - pu.y;
+        var pd = Math.sqrt(pdx * pdx + pdy * pdy);
+        var ringWidth = 40;
+        if (Math.abs(pd - pu.radius) < ringWidth && pd > 0.001){
+          var push = (1 - Math.abs(pd - pu.radius) / ringWidth) * 0.9 * pu.life;
+          s.vx += (pdx / pd) * push;
+          s.vy += (pdy / pd) * push;
+        }
+      }
+
+      // Spring back toward home + drift target.
+      var targetX = s.baseX + driftX * CONFIG.parallax * 6;
+      var targetY = s.baseY + driftY * CONFIG.parallax * 6;
+      s.vx += (targetX - s.x) * SPRING;
+      s.vy += (targetY - s.y) * SPRING;
+
+      s.vx *= DAMPING;
+      s.vy *= DAMPING;
+      s.x += s.vx;
+      s.y += s.vy;
+
+      // Twinkle + special-star glow decay
+      s.twinklePhase += s.twinkleSpeed * dt;
+      if (s.glow > 0){
+        var remaining = s.pulseUntil - performance.now();
+        s.glow = Math.max(0, Math.min(1, remaining / 1400));
+      }
+    }
+
+    // Age out pulses
+    for (var q = pulses.length - 1; q >= 0; q--){
+      var pu2 = pulses[q];
+      pu2.radius += (pu2.gold ? 2.6 : 4.5);
+      pu2.life -= pu2.gold ? 0.02 : 0.018;
+      if (pu2.life <= 0 || pu2.radius > (pu2.maxRadius || 240)) pulses.splice(q, 1);
+    }
+
+    // Age out / move particles
+    for (var r = particles.length - 1; r >= 0; r--){
+      var pa = particles[r];
+      pa.x += pa.vx;
+      pa.y += pa.vy;
+      pa.vx *= 0.97;
+      pa.vy *= 0.97;
+      pa.life -= pa.decay;
+      if (pa.life <= 0) particles.splice(r, 1);
+    }
+
+    // Move / age shooting stars
+    for (var sIdx = shootingStars.length - 1; sIdx >= 0; sIdx--){
+      var sh = shootingStars[sIdx];
+      sh.x += sh.vx;
+      sh.y += sh.vy;
+      sh.life -= sh.decay;
+      if (sh.life <= 0 || sh.x < -200 || sh.x > W + 200 || sh.y > H + 200){
+        shootingStars.splice(sIdx, 1);
+      }
+    }
+
+    maybeSpawnShootingStar();
+  }
+
+  /* ======================================================================
+     RENDER
+     ====================================================================== */
+  var moon = null;
+  function layoutMoon(){
+    moon = {
+      x: W * 0.82,
+      y: H * 0.16,
+      r: Math.min(W, H) * 0.045 + 14
+    };
+  }
+
+  function drawMoon(){
+    if (!moon) return;
+    var g = ctx.createRadialGradient(moon.x, moon.y, 0, moon.x, moon.y, moon.r * 2.6);
+    g.addColorStop(0, 'rgba(244,236,216,0.55)');
+    g.addColorStop(1, 'rgba(244,236,216,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(moon.x, moon.y, moon.r * 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(moon.x, moon.y, moon.r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(244,236,216,0.92)';
+    ctx.shadowColor = 'rgba(244,236,216,0.6)';
+    ctx.shadowBlur = 24;
+    ctx.fill();
+
+    // subtle crescent shading (a soft terminator, not a literal craters map)
+    ctx.globalCompositeOperation = 'source-atop';
+    ctx.beginPath();
+    ctx.arc(moon.x - moon.r * 0.32, moon.y - moon.r * 0.12, moon.r * 0.98, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10,15,35,0.35)';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawStars(){
+    for (var i = 0; i < stars.length; i++){
+      var s = stars[i];
+      var twinkle = 1 - s.twinkleAmount * (0.5 + 0.5 * Math.sin(s.twinklePhase));
+      var r = s.baseRadius * twinkle * (1 + s.glow * 1.8);
+      var alpha = (0.45 + 0.55 * twinkle) * (0.5 + s.depth * 0.5);
+      var color = s.hue === 'warm' ? '255,246,224' : '205,220,255';
+
+      if (s.isBig || s.glow > 0){
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(' + color + ',' + (0.10 + s.glow * 0.25) + ')';
+        ctx.arc(s.x, s.y, r * (3.2 + s.glow * 2), 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(' + color + ',' + Math.min(1, alpha + s.glow * 0.4) + ')';
+      ctx.arc(s.x, s.y, Math.max(0.35, r), 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawShootingStars(){
+    for (var i = 0; i < shootingStars.length; i++){
+      var sh = shootingStars[i];
+      var tailX = sh.x - sh.vx * (sh.len / Math.max(1, Math.hypot(sh.vx, sh.vy)));
+      var tailY = sh.y - sh.vy * (sh.len / Math.max(1, Math.hypot(sh.vx, sh.vy)));
+      var grad = ctx.createLinearGradient(sh.x, sh.y, tailX, tailY);
+      grad.addColorStop(0, 'rgba(255,255,255,' + sh.life + ')');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sh.x, sh.y);
+      ctx.lineTo(tailX, tailY);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(255,255,255,' + sh.life + ')';
+      ctx.arc(sh.x, sh.y, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawPulses(){
+    for (var i = 0; i < pulses.length; i++){
+      var pu = pulses[i];
+      ctx.beginPath();
+      ctx.strokeStyle = pu.gold
+        ? 'rgba(255,224,170,' + (pu.life * 0.5) + ')'
+        : 'rgba(210,220,255,' + (pu.life * 0.35) + ')';
+      ctx.lineWidth = 1.2;
+      ctx.arc(pu.x, pu.y, Math.max(0, pu.radius), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  function drawParticles(){
+    for (var i = 0; i < particles.length; i++){
+      var pa = particles[i];
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(' + pa.color + ',' + pa.life + ')';
+      ctx.arc(pa.x, pa.y, pa.radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  var lastTime = performance.now();
+  function frame(now){
+    var dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+
+    ctx.clearRect(0, 0, W, H);
+
+    drawMoon();
+    stepStars(dt);
+    drawStars();
+    drawShootingStars();
+    drawPulses();
+    drawParticles();
+
+    requestAnimationFrame(frame);
+  }
+
+  /* ======================================================================
+     AMBIENT SOUND (optional, muted by default, only starts on click)
+     A very soft synthesized pad using the Web Audio API — no external
+     audio files required, so the page still works fully offline.
+     ====================================================================== */
+  var audioCtx = null;
+  var soundOn = false;
+  var soundNodes = null;
+  var soundBtn = document.getElementById('soundBtn');
+  var iconOff = document.getElementById('soundIconOff');
+  var iconOn = document.getElementById('soundIconOn');
+
+  function startAmbientSound(){
+    if (!audioCtx){
+      var Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return;
+      audioCtx = new Ctx();
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    var master = audioCtx.createGain();
+    master.gain.value = 0;
+    master.connect(audioCtx.destination);
+    master.gain.linearRampToValueAtTime(0.05, audioCtx.currentTime + 2.5);
+
+    var osc1 = audioCtx.createOscillator();
+    osc1.type = 'sine';
+    osc1.frequency.value = 110;
+    var osc2 = audioCtx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = 164.8; // soft perfect-fifth-ish pad
+
+    var lfo = audioCtx.createOscillator();
+    lfo.frequency.value = 0.07;
+    var lfoGain = audioCtx.createGain();
+    lfoGain.gain.value = 6;
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc1.frequency);
+
+    osc1.connect(master);
+    osc2.connect(master);
+
+    osc1.start();
+    osc2.start();
+    lfo.start();
+
+    soundNodes = { master: master, osc1: osc1, osc2: osc2, lfo: lfo };
+  }
+
+  function stopAmbientSound(){
+    if (!soundNodes || !audioCtx) return;
+    var now = audioCtx.currentTime;
+    soundNodes.master.gain.cancelScheduledValues(now);
+    soundNodes.master.gain.setValueAtTime(soundNodes.master.gain.value, now);
+    soundNodes.master.gain.linearRampToValueAtTime(0, now + 1.2);
+    var nodes = soundNodes;
+    setTimeout(function(){
+      try { nodes.osc1.stop(); nodes.osc2.stop(); nodes.lfo.stop(); } catch(e){}
+    }, 1300);
+    soundNodes = null;
+  }
+
+  soundBtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    soundOn = !soundOn;
+    if (soundOn){
+      startAmbientSound();
+      iconOff.style.display = 'none';
+      iconOn.style.display = 'block';
+      soundBtn.setAttribute('aria-label', 'Desativar som ambiente');
+    } else {
+      stopAmbientSound();
+      iconOff.style.display = 'block';
+      iconOn.style.display = 'none';
+      soundBtn.setAttribute('aria-label', 'Ativar som ambiente');
+    }
+  });
+
+  /* ======================================================================
+     BOOT
+     ====================================================================== */
+  resize();
+  layoutMoon();
+  assignAffinities();
+  window.addEventListener('resize', layoutMoon);
+
+  // Reveal the quote softly after load, then the small hint just after.
+  window.requestAnimationFrame(function(){
+    setTimeout(function(){
+      document.getElementById('quote').classList.add('show');
+    }, 350);
+    setTimeout(function(){
+      if (!firstInteractionDone) hintEl.classList.add('show');
+    }, 2200);
+  });
+
+  requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
